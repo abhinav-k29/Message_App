@@ -1,0 +1,10 @@
+{
+  "name": "getting-started-on-socketio",
+  "version": "0.0.1",
+  "description": "my first socketio app",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^4.22.2",
+    "socket.io": "^4.8.3"
+  }
+}
