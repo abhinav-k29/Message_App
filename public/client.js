@@ -7,6 +7,7 @@ const decoder = new TextDecoder();
 let aesKey = null;
 let roomSalt = "";
 let sendSequence = 0;
+const seenMessageIds = new Set();
 
 const usernameInput =
   document.querySelector("#username");
@@ -34,6 +35,9 @@ const tamperButton =
 
 const forgeButton = 
   document.querySelector("#forge-next");
+
+const replayButton =
+  document.querySelector("#replay-last");
 
 const passphraseInput =
   document.querySelector("#passphrase");
@@ -327,6 +331,17 @@ forgeButton.addEventListener("click", () => {
   });
 });
 
+replayButton.addEventListener("click", () => {
+  socket.emit("replay-last",response => {
+    if (!response?.ok) {
+      statusText.textContent = response?.error ?? "Replay failed.";
+      return;
+    }
+
+    statusText.textContent ="Attack performed: last encrypted packet replayed.";
+  });
+});
+
 sendButton.addEventListener("click", async () => {
   const message = messageInput.value.trim();
 
@@ -377,8 +392,17 @@ socket.on(
 
     try {
       const message =  await decryptMessage(packet);
+      
+      if (seenMessageIds.has(packet.messageId)) {
+        item.textContent = `[${time}] ⚠ Replay detected: duplicate message rejected.`;
+        item.classList.add("security-error");
+        messagesList.appendChild(item);
 
+        return;
+      }
+      seenMessageIds.add(packet.messageId);
       item.textContent = `[${time}] ${packet.sender}: ${message}`;
+      
     } catch (error) {
       console.error("Decryption error:", error);
       item.textContent =`[${time}] ⚠ Message authentication failed. ` + `The key is wrong or the encrypted packet was altered.`;

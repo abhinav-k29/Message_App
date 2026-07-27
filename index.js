@@ -13,6 +13,7 @@ app.use(express.static(path.join(__dirname, "public")));
 const roomSalts = new Map();
 let tamperNextMessage = false;
 let forgeSenderNext = false;
+const lastPackets = new Map();
 
 io.on('connection', (socket)=>{
   console.log("Connected:", socket.id);
@@ -45,6 +46,33 @@ io.on('connection', (socket)=>{
     socket.on("arm-forgery", acknowledge => {
       forgeSenderNext = true;
       console.log("ATTACK LAB: next sender name will be forged");
+
+      if (typeof acknowledge === "function") {
+        acknowledge({
+          ok: true
+        });
+      } 
+    });
+
+    socket.on("replay-last", acknowledge => {
+      const room = socket.data.room;
+      const packet = lastPackets.get(room);
+
+      if (!room || !packet) {
+        if (typeof acknowledge ==="function") {
+          acknowledge({
+            ok: false,
+            error: "No encrypted packet is available to replay."
+          });
+        }
+        return;
+      }
+      console.log("ATTACK LAB: replaying old valid packet");
+
+      io.to(room).emit(
+        "encrypted-message",
+        packet
+      );
 
       if (typeof acknowledge === "function") {
         acknowledge({
@@ -146,6 +174,8 @@ io.on('connection', (socket)=>{
         forgeSenderNext = false;
         console.log("ATTACK LAB: sender metadata forged");
       }
+      
+      lastPackets.set(socket.data.room, outgoingPacket);
 
       io.to(socket.data.room).emit(
         "encrypted-message",
