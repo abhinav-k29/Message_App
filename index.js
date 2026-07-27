@@ -14,6 +14,7 @@ const roomSalts = new Map();
 let tamperNextMessage = false;
 let forgeSenderNext = false;
 const lastPackets = new Map();
+const dropNextByRoom = new Set();
 
 io.on('connection', (socket)=>{
   console.log("Connected:", socket.id);
@@ -52,6 +53,30 @@ io.on('connection', (socket)=>{
           ok: true
         });
       } 
+    });
+
+    socket.on("arm-drop", acknowledge => {
+      const room = socket.data.room;
+
+      if (!room) {
+        if (typeof acknowledge === "function") {
+          acknowledge({
+            ok: false,
+            error: "Join a room before arming the attack."
+          });
+        }
+        return;
+      }
+
+      dropNextByRoom.add(room);
+
+      console.log(`ATTACK LAB: next message in ${room} will be dropped`);
+
+      if (typeof acknowledge === "function") {
+        acknowledge({
+          ok: true
+        });
+      }
     });
 
     socket.on("replay-last", acknowledge => {
@@ -173,6 +198,18 @@ io.on('connection', (socket)=>{
         outgoingPacket.sender = "Course Admin";
         forgeSenderNext = false;
         console.log("ATTACK LAB: sender metadata forged");
+      }
+
+      if (dropNextByRoom.has(socket.data.room)) {
+        dropNextByRoom.delete(socket.data.room);
+        console.log(`ATTACK LAB: encrypted message ${packet.messageId} silently dropped`);
+
+        sendAcknowledgement({
+          ok: true,
+          id: packet.messageId
+        });
+
+        return;
       }
       
       lastPackets.set(socket.data.room, outgoingPacket);

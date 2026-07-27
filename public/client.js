@@ -39,6 +39,9 @@ const forgeButton =
 const replayButton =
   document.querySelector("#replay-last");
 
+const dropButton =
+  document.querySelector("#drop-next");
+
 const passphraseInput =
   document.querySelector("#passphrase");
 
@@ -342,6 +345,17 @@ replayButton.addEventListener("click", () => {
   });
 });
 
+dropButton.addEventListener("click", () => {
+  socket.emit("arm-drop", response => {
+    if (!response?.ok) {
+      statusText.textContent = response?.error ?? "Could not arm drop attack.";
+      return;
+    }
+
+    statusText.textContent = "Attack armed: the relay will silently drop the next message.";
+  });
+});
+
 sendButton.addEventListener("click", async () => {
   const message = messageInput.value.trim();
 
@@ -402,7 +416,7 @@ socket.on(
       }
       seenMessageIds.add(packet.messageId);
       item.textContent = `[${time}] ${packet.sender}: ${message}`;
-      
+
     } catch (error) {
       console.error("Decryption error:", error);
       item.textContent =`[${time}] ⚠ Message authentication failed. ` + `The key is wrong or the encrypted packet was altered.`;
