@@ -11,6 +11,8 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname, "public")));
 
 const roomSalts = new Map();
+let tamperNextMessage = false;
+let forgeSenderNext = false;
 
 io.on('connection', (socket)=>{
   console.log("Connected:", socket.id);
@@ -29,6 +31,27 @@ io.on('connection', (socket)=>{
 
       return;
     }
+
+    socket.on("arm-tamper", acknowledge => {
+      tamperNextMessage = true;
+      console.log("ATTACK LAB: next ciphertext will be modified");
+      if (typeof acknowledge === "function") {
+        acknowledge({
+          ok: true
+        });
+      }
+    });
+
+    socket.on("arm-forgery", acknowledge => {
+      forgeSenderNext = true;
+      console.log("ATTACK LAB: next sender name will be forged");
+
+      if (typeof acknowledge === "function") {
+        acknowledge({
+          ok: true
+        });
+      } 
+    });
 
     socket.data.username = username.trim();
     socket.data.room = room.trim();
@@ -102,10 +125,31 @@ io.on('connection', (socket)=>{
       }
 
       console.log(`CIPHERTEXT from ${packet.sender}:`, packet.ciphertext.slice(0, 80));
+      
+      let outgoingPacket = {
+        ...packet
+      };
+
+      if (tamperNextMessage) {
+        const ciphertextBytes = Buffer.from(outgoingPacket.ciphertext,"base64");
+        if (ciphertextBytes.length > 0) {
+          ciphertextBytes[0] ^= 1;
+        }
+        outgoingPacket.ciphertext = ciphertextBytes.toString("base64");
+        tamperNextMessage = false;
+
+        console.log("ATTACK LAB: ciphertext byte modified");
+      }
+
+      if (forgeSenderNext) {
+        outgoingPacket.sender = "Course Admin";
+        forgeSenderNext = false;
+        console.log("ATTACK LAB: sender metadata forged");
+      }
 
       io.to(socket.data.room).emit(
         "encrypted-message",
-        packet
+        outgoingPacket
       );
       sendAcknowledgement({
         ok: true,

@@ -29,6 +29,12 @@ const joinButton =
 const sendButton =
   document.querySelector("#send");
 
+const tamperButton =
+  document.querySelector("#tamper-next");
+
+const forgeButton = 
+  document.querySelector("#forge-next");
+
 const passphraseInput =
   document.querySelector("#passphrase");
 
@@ -185,29 +191,46 @@ joinButton.addEventListener("click", () => {
 
 });
 
+function createAuthenticatedHeader(packet) {
+  return encoder.encode(
+    JSON.stringify({
+      version: packet.version,
+      room: packet.room,
+      sender: packet.sender,
+      messageId: packet.messageId,
+      sequence: packet.sequence,
+      sentAt: packet.sentAt
+    })
+  );
+}
+
 async function encryptMessage(message) {
   if (!aesKey) {
     throw new Error(
       "Encryption key has not been created."
     );
   }
-  const iv =crypto.getRandomValues(new Uint8Array(12));
-  const plaintextBytes = encoder.encode(message);
-
-  const encryptedBuffer =
-    await crypto.subtle.encrypt({ name: "AES-GCM", iv },
-      aesKey,
-      plaintextBytes
-    );
   sendSequence += 1;
-
-  return {
+  const packet = {
     version: 1,
     room: currentRoom,
     sender: currentUsername,
     messageId: crypto.randomUUID(),
     sequence: sendSequence,
-    sentAt: Date.now(),
+    sentAt: Date.now()
+  };
+
+  const iv =crypto.getRandomValues(new Uint8Array(12));
+  const plaintextBytes = encoder.encode(message);
+
+  const encryptedBuffer =
+    await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: createAuthenticatedHeader(packet) },
+      aesKey,
+      plaintextBytes
+    );
+
+  return {
+    ...packet,
     iv: bytesToBase64(iv),
     ciphertext: bytesToBase64(encryptedBuffer)
   };
@@ -223,7 +246,7 @@ async function decryptMessage(packet) {
   const ciphertext =base64ToBytes(packet.ciphertext);
 
   const plaintextBuffer =
-    await crypto.subtle.decrypt({name: "AES-GCM", iv},
+    await crypto.subtle.decrypt({name: "AES-GCM", iv, additionalData: createAuthenticatedHeader(packet)},
       aesKey,
       ciphertext
     );
@@ -286,6 +309,23 @@ setKeyButton.addEventListener("click", async () => {
     }
   }
 );
+
+tamperButton.addEventListener("click", () => {
+  socket.emit("arm-tamper", response => {
+    if (response?.ok) {
+      statusText.textContent = "Attack armed: next ciphertext will be modified.";
+    }
+    
+  });
+});
+
+forgeButton.addEventListener("click", () => {
+  socket.emit("arm-forgery", response => {
+    if (response?.ok) {
+      statusText.textContent = "Attack armed: next sender will be changed to Course Admin.";
+    }
+  });
+});
 
 sendButton.addEventListener("click", async () => {
   const message = messageInput.value.trim();
