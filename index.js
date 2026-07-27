@@ -62,45 +62,99 @@ io.on('connection', (socket)=>{
     console.log( `${socket.data.username} joined ${socket.data.room}`);
   });
   
-  socket.on("chat-message", ({ room, message }, acknowledge) => {
-    if (
-      typeof room !== "string" ||
-      typeof message !== "string" ||
-      !message.trim()
+  socket.on( "encrypted-message", (packet, acknowledge) => {
+      const sendAcknowledgement = response => {
+        if ( typeof acknowledge === "function") {
+          acknowledge(response);
+        }
+      };
+      if (
+        !packet ||
+        typeof packet !== "object" ||
+        typeof packet.room !== "string" ||
+        typeof packet.sender !== "string" ||
+        typeof packet.iv !== "string" ||
+        typeof packet.ciphertext !== "string" ||
+        typeof packet.messageId !== "string" ||
+        typeof packet.sequence !== "number" ||
+        typeof packet.sentAt !== "number"
+      ) {
+        console.log("Rejected malformed encrypted packet");
+        sendAcknowledgement({
+          ok: false,
+          error:"Malformed encrypted packet"
+        });
 
-    ) {
-      acknowledge({
-        ok: false,
-        error: "Invalid message"
+        return;
+      }
+
+      if (
+        packet.room !== socket.data.room ||
+        packet.sender !== socket.data.username || !socket.rooms.has(packet.room)
+      ) {
+        console.log("Rejected unauthorised encrypted packet");
+        sendAcknowledgement({
+          ok: false,
+          error:"You are not authorised to send to this room"
+        });
+
+        return;
+      }
+
+      console.log(`CIPHERTEXT from ${packet.sender}:`, packet.ciphertext.slice(0, 80));
+
+      io.to(socket.data.room).emit(
+        "encrypted-message",
+        packet
+      );
+      sendAcknowledgement({
+        ok: true,
+        id: packet.messageId
       });
-
-      return;
     }
+  );
 
-    if (!socket.rooms.has(room)) {
-      console.log("Rejected message for unauthorised room");
-      return;
-    }
 
-    const packet = {
-      id: randomUUID(),
-      sender: socket.data.username ?? "Unknown",
-      message: message.trim(),
-      sentAt: Date.now()
-    };
 
-    console.log(
-      `PLAINTEXT from ${packet.sender}:`,
-      message
-    );
+  // socket.on("chat-message", ({ room, message }, acknowledge) => {
+  //   if (
+  //     typeof room !== "string" ||
+  //     typeof message !== "string" ||
+  //     !message.trim()
 
-    io.to(room).emit("chat-message", packet);
+  //   ) {
+  //     acknowledge({
+  //       ok: false,
+  //       error: "Invalid message"
+  //     });
 
-    acknowledge({
-      ok: true,
-      id: packet.id
-    });
-  });
+  //     return;
+  //   }
+
+  //   if (!socket.rooms.has(room)) {
+  //     console.log("Rejected message for unauthorised room");
+  //     return;
+  //   }
+
+  //   const packet = {
+  //     id: randomUUID(),
+  //     sender: socket.data.username ?? "Unknown",
+  //     message: message.trim(),
+  //     sentAt: Date.now()
+  //   };
+
+  //   console.log(
+  //     `PLAINTEXT from ${packet.sender}:`,
+  //     message
+  //   );
+
+  //   io.to(room).emit("chat-message", packet);
+
+  //   acknowledge({
+  //     ok: true,
+  //     id: packet.id
+  //   });
+  // });
 
   socket.on("disconnect", () => {
     const username = socket.data.username;

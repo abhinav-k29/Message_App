@@ -44,6 +44,11 @@ const fingerprintText =
 let currentRoom = "";
 let currentUsername = "";
 
+socket.on("connect", () => {
+  console.log("Connected:", socket.id);
+  statusText.textContent =`Connected: ${socket.id}. Join a room.`;
+});
+
 function bytesToBase64(value) {
   const bytes =
     value instanceof Uint8Array ? value : new Uint8Array(value);
@@ -123,6 +128,8 @@ async function deriveRoomKey(
   return formatFingerprint(fingerprintHash);
 }
 
+
+
 function displaySystemMessage(
   text,
   timestamp
@@ -178,6 +185,55 @@ joinButton.addEventListener("click", () => {
 
 });
 
+async function encryptMessage(message) {
+  if (!aesKey) {
+    throw new Error(
+      "Encryption key has not been created."
+    );
+  }
+  const iv =crypto.getRandomValues(new Uint8Array(12));
+  const plaintextBytes = encoder.encode(message);
+
+  const encryptedBuffer =
+    await crypto.subtle.encrypt({ name: "AES-GCM", iv },
+      aesKey,
+      plaintextBytes
+    );
+  sendSequence += 1;
+
+  return {
+    version: 1,
+    room: currentRoom,
+    sender: currentUsername,
+    messageId: crypto.randomUUID(),
+    sequence: sendSequence,
+    sentAt: Date.now(),
+    iv: bytesToBase64(iv),
+    ciphertext: bytesToBase64(encryptedBuffer)
+  };
+}
+
+async function decryptMessage(packet) {
+  if (!aesKey) {
+    throw new Error(
+      "Encryption key has not been created."
+    );
+  }
+  const iv = base64ToBytes(packet.iv);
+  const ciphertext =base64ToBytes(packet.ciphertext);
+
+  const plaintextBuffer =
+    await crypto.subtle.decrypt({name: "AES-GCM", iv},
+      aesKey,
+      ciphertext
+    );
+
+  // Convert decrypted UTF-8 byte back into javascript string
+  return decoder.decode(
+    plaintextBuffer
+  );
+}
+
 socket.on(
   "room-ready",
   ({ room, salt }) => {
@@ -231,7 +287,7 @@ setKeyButton.addEventListener("click", async () => {
   }
 );
 
-sendButton.addEventListener("click", () => {
+sendButton.addEventListener("click", async () => {
   const message = messageInput.value.trim();
 
   if (!currentRoom) {
@@ -243,39 +299,51 @@ sendButton.addEventListener("click", () => {
     return;
   }
 
-  socket.timeout(5000).emit("chat-message", {
-    room: currentRoom,
-    message
-    },
-    (error, response) => {
-      if (error) {
-        statusText.textContent =
-          "The server did not acknowledge the message.";
+  if (!aesKey) {
+    statusText.textContent = "Create the encryption key first.";
+    return;
+  }
 
-        return;
-      }
-      if (!response.ok) {
-        statusText.textContent =
-          response.error ?? "Message failed";
+  try{
+    const packet = await encryptMessage(message);
 
-        return;
+    socket.timeout(5000).emit("encrypted-message", packet,
+      (error, response) => {
+        if (error) {
+          statusText.textContent = "The server did not acknowledge the encrypted message.";
+          return;
+        }
+        if (!response.ok) {
+          statusText.textContent = response.error ?? "Encrypted Message failed";
+          return;
+        }
+        statusText.textContent = `Encrypted message accepted: ${response.id}`;
+        messageInput.value = "";
       }
-      statusText.textContent = `Message accepted: ${response.id}`;
-      messageInput.value = "";
-    }
-  );
+    );
+  } 
+  catch (error) {
+    console.error("Encryption error:", error);
+    statusText.textContent = "Encryption failed.";
+  }
 
 });
 
 socket.on(
-  "chat-message",
-  ({ sender, message, sentAt }) => {
+  "encrypted-message",
+  async packet => {
     const item = document.createElement("li");
+    const time = new Date(packet.sentAt).toLocaleTimeString();
 
-    const time = new Date(sentAt)
-      .toLocaleTimeString();
-    item.textContent =
-      `[${time}] ${sender}: ${message}`;
+    try {
+      const message =  await decryptMessage(packet);
+
+      item.textContent = `[${time}] ${packet.sender}: ${message}`;
+    } catch (error) {
+      console.error("Decryption error:", error);
+      item.textContent =`[${time}] ⚠ Message authentication failed. ` + `The key is wrong or the encrypted packet was altered.`;
+      item.classList.add("security-error");
+    }
 
     messagesList.appendChild(item);
   }
