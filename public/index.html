@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta name="viewport" content="width=device-width,initial-scale=1.0">
-    <title>Socket.IO chat</title>
+    <title>COMP6441 Chat</title>
     <style>
       body { margin: 0; padding-bottom: 3rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
 
@@ -17,32 +17,45 @@
     </style>
   </head>
   <body>
-    <ul id="messages"></ul>
+    <main>
+      <h1>COMP6441 Chat Demo</h1>
+
+      <section>
+        <h2>Connection</h2>
+
+        <input
+          id="username"
+          placeholder="Username, e.g. Alice"
+        >
+
+        <input
+          id="room"
+          placeholder="Room, e.g. comp6441"
+        >
+
+        <button id="join">Join room</button>
+
+        <p id="status">Not joined</p>
+      </section>
+
+      <section>
+        <h2>Messages</h2>
+
+        <ul id="messages"></ul>
+
+        <input
+          id="message"
+          placeholder="Type a message"
+        >
+
+        <button id="send">Send</button>
+      </section>
+    </main>
+    <!-- <ul id="messages"></ul>
     <form id="form" action="">
       <input id="input" autocomplete="off" /><button>Send</button>
-    </form>
+    </form> -->
     <script src="/socket.io/socket.io.js"></script>
-    <script>
-      const socket = io();
-
-      const form = document.getElementById('form');
-      const input = document.getElementById('input');
-      const messages = document.getElementById('messages');
-
-      form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        if (input.value) {
-          socket.emit('chat message', input.value);
-          input.value = '';
-        }
-      });
-
-      socket.on('chat message', (msg) => {
-      const item = document.createElement('li');
-      item.textContent = msg;
-      messages.appendChild(item);
-      window.scrollTo(0, document.body.scrollHeight);
-    });
-    </script>
+    <script src="/client.js"></script>
   </body>
 </html>
