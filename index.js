@@ -3,14 +3,14 @@ const { createServer } = require('node:http');
 const { join } = require('node:path');
 const path = require("path");
 const { Server } = require('socket.io');
-const crypto = require("node:crypto");
+const { randomBytes, randomUUID } = require("node:crypto");
 const app = express();
 const server = createServer(app);
 const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, "public")));
 
-
+const roomSalts = new Map();
 
 io.on('connection', (socket)=>{
   console.log("Connected:", socket.id);
@@ -35,11 +35,30 @@ io.on('connection', (socket)=>{
 
     socket.join(socket.data.room);
 
+    if (!roomSalts.has(socket.data.room)) {
+      roomSalts.set(
+        socket.data.room,
+        randomBytes(16).toString("base64")
+      );
+    }
+
     acknowledge({
       ok: true,
       username: socket.data.username,
       room: socket.data.room
     });
+
+    socket.emit("room-ready", {
+      room: socket.data.room,
+      salt: roomSalts.get(socket.data.room)
+    });
+
+    socket.to(socket.data.room).emit("user-joined", {
+      username: socket.data.username,
+      room: socket.data.room,
+      joinedAt: Date.now()
+    });
+
     console.log( `${socket.data.username} joined ${socket.data.room}`);
   });
   
@@ -64,6 +83,7 @@ io.on('connection', (socket)=>{
     }
 
     const packet = {
+      id: randomUUID(),
       sender: socket.data.username ?? "Unknown",
       message: message.trim(),
       sentAt: Date.now()
@@ -78,15 +98,25 @@ io.on('connection', (socket)=>{
 
     acknowledge({
       ok: true,
-      message: packet.message
+      id: packet.id
     });
   });
 
   socket.on("disconnect", () => {
+    const username = socket.data.username;
+    const room = socket.data.room;
+
     console.log("Disconnected:", socket.id);
+    if (username && room) {
+      socket.to(room).emit("user-left", {
+        username,
+        room,
+        leftAt: Date.now()
+      });
+    }
   });
 });
 
 server.listen(3000, () =>{
-  console.log('server is running at local host 3000');
+  console.log('server is running at http://localhost:3000');
 });

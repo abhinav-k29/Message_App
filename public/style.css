@@ -1,0 +1,8 @@
+.system-message {
+  color: #555;
+  font-style: italic;
+  background: #f3f4f6;
+  padding: 6px 10px;
+  margin: 4px 0;
+  list-style: none;
+}
