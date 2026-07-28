@@ -8,6 +8,7 @@ let aesKey = null;
 let roomSalt = "";
 let sendSequence = 0;
 const seenMessageIds = new Set();
+const MAX_MESSAGE_CHARACTERS = 1000;
 
 const usernameInput =
   document.querySelector("#username");
@@ -358,7 +359,10 @@ dropButton.addEventListener("click", () => {
 
 sendButton.addEventListener("click", async () => {
   const message = messageInput.value.trim();
-
+  if (message.length > MAX_MESSAGE_CHARACTERS) {
+    statusText.textContent = "Message is too long. Maximum: 1000 characters.";
+    return;
+  }
   if (!currentRoom) {
     statusText.textContent = "Join a room before sending.";
     return;
@@ -396,6 +400,15 @@ sendButton.addEventListener("click", async () => {
     statusText.textContent = "Encryption failed.";
   }
 
+});
+
+messageInput.addEventListener("keydown", event => {
+  if (event.key === "Enter" &&
+    !event.shiftKey &&
+    !event.isComposing) {
+    event.preventDefault();
+    sendButton.click();
+  }
 });
 
 socket.on(

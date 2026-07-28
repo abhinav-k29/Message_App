@@ -12,3 +12,26 @@
   background: #fee2e2;
   font-weight: 600;
 }
+
+#message {
+  width: 300px;
+  height: 36px;
+  min-height: 36px;
+  max-height: 120px;
+
+  padding: 8px 10px;
+  box-sizing: border-box;
+
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 18px;
+
+  resize: none;
+  overflow-y: auto;
+  vertical-align: middle;
+}
+
+#send {
+  height: 36px;
+  vertical-align: middle;
+}

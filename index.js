@@ -8,6 +8,14 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server);
 
+const MAX_USERNAME_LENGTH = 30;
+const MAX_ROOM_LENGTH = 64;
+const MAX_CIPHERTEXT_LENGTH = 8192;
+const RATE_WINDOW_MS = 7_000;
+const MAX_MESSAGES_PER_WINDOW = 10;
+const USERNAME_PATTERN = /^[A-Za-z0-9 _-]+$/;
+const ROOM_PATTERN = /^[A-Za-z0-9_-]+$/;
+
 app.use(express.static(path.join(__dirname, "public")));
 
 const roomSalts = new Map();
@@ -16,23 +24,44 @@ let forgeSenderNext = false;
 const lastPackets = new Map();
 const dropNextByRoom = new Set();
 
+function isRateLimited(socket) {
+  const now = Date.now();
+  const recentMessages = (socket.data.messageTimes ?? [] ).filter(timestamp => timestamp > now - RATE_WINDOW_MS);
+
+  if (recentMessages.length >= MAX_MESSAGES_PER_WINDOW) {
+    socket.data.messageTimes = recentMessages;
+    return true;
+  }
+  recentMessages.push(now);
+  socket.data.messageTimes = recentMessages;
+
+  return false;
+}
+
 io.on('connection', (socket)=>{
   console.log("Connected:", socket.id);
+  socket.data.messageTimes = [];
 
   socket.on("join-room", ({ username, room }, acknowledge) => {
-    if (
-      typeof username !== "string" ||
-      typeof room !== "string" ||
-      !username?.trim() ||
-      !room?.trim()
-    ) {
+    const cleanUsername = typeof username === "string" ? username.trim() : "";
+    const cleanRoom = typeof room === "string" ? room.trim() : "";
+
+    if (!cleanUsername || !cleanRoom ||
+      cleanUsername.length > MAX_USERNAME_LENGTH ||
+      cleanRoom.length > MAX_ROOM_LENGTH ||
+      !USERNAME_PATTERN.test(cleanUsername) ||
+      !ROOM_PATTERN.test(cleanRoom)) {
       acknowledge({
         ok: false,
-        error: "Username and room are required"
+        error:"Invalid username or room name"
       });
 
       return;
     }
+
+
+    socket.data.username = cleanUsername;
+    socket.data.room = cleanRoom;
 
     socket.on("arm-tamper", acknowledge => {
       tamperNextMessage = true;
@@ -144,25 +173,36 @@ io.on('connection', (socket)=>{
           acknowledge(response);
         }
       };
+
+      const ivByteLength = typeof packet?.iv === "string" ? Buffer.from(packet.iv, "base64").length : 0;
       if (
         !packet ||
         typeof packet !== "object" ||
+        packet.version !== 1 ||
         typeof packet.room !== "string" ||
         typeof packet.sender !== "string" ||
         typeof packet.iv !== "string" ||
         typeof packet.ciphertext !== "string" ||
         typeof packet.messageId !== "string" ||
-        typeof packet.sequence !== "number" ||
-        typeof packet.sentAt !== "number"
+        !Number.isSafeInteger(packet.sequence) ||
+        packet.sequence < 1 || 
+        !Number.isFinite(packet.sentAt) ||
+        packet.room.length > MAX_ROOM_LENGTH ||
+        packet.sender.length > MAX_USERNAME_LENGTH ||
+        packet.messageId.length > 64 ||
+        packet.ciphertext.length > MAX_CIPHERTEXT_LENGTH ||
+        ivByteLength !== 12
       ) {
-        console.log("Rejected malformed encrypted packet");
+        console.log("SECURITY: rejected malformed or oversized encrypted packet");
         sendAcknowledgement({
           ok: false,
-          error:"Malformed encrypted packet"
+          error:"Malformed or oversized encrypted packet"
         });
 
         return;
       }
+
+
 
       if (
         packet.room !== socket.data.room ||
@@ -182,6 +222,16 @@ io.on('connection', (socket)=>{
       let outgoingPacket = {
         ...packet
       };
+
+      if (isRateLimited(socket)) {
+        console.log(`SECURITY: rate limit triggered for ${socket.id}`);
+        sendAcknowledgement({
+          ok: false,
+          error: "Too many messages. Wait a few seconds."
+        });
+
+        return;
+      }
 
       if (tamperNextMessage) {
         const ciphertextBytes = Buffer.from(outgoingPacket.ciphertext,"base64");
