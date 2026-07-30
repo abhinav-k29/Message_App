@@ -55,6 +55,12 @@ const keyStatus =
 const fingerprintText =
   document.querySelector("#fingerprint");
 
+const createInviteButton =
+  document.querySelector("#create-invite");
+
+const inviteLinkInput =
+  document.querySelector("#invite-link");
+
 let currentRoom = "";
 let currentUsername = "";
 
@@ -82,6 +88,17 @@ function base64ToBytes(base64) {
     binary,
     character => character.charCodeAt(0)
   );
+}
+
+function createRandomRoomId() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+const invitationRoom = new URL(window.location.href).searchParams.get("room");
+
+if (invitationRoom) {
+  roomInput.value = invitationRoom;
 }
 
 function formatFingerprint(buffer) {
@@ -198,6 +215,33 @@ joinButton.addEventListener("click", () => {
   );
 
 });
+
+
+createInviteButton.addEventListener("click", async () => {
+  const roomId =createRandomRoomId();
+  roomInput.value =roomId;
+
+  const inviteUrl = new URL(window.location.href);
+  inviteUrl.searchParams.set(
+    "room",
+    roomId
+  );
+
+  inviteLinkInput.value = inviteUrl.toString();
+  window.history.replaceState(
+    null,
+    "",
+    inviteUrl
+  );
+
+  try {
+    await navigator.clipboard.writeText(inviteUrl.toString());
+    statusText.textContent = "Private room link created and copied.";
+  } catch {
+    statusText.textContent ="Private room link created. Copy it manually.";
+  }
+});
+
 
 function createAuthenticatedHeader(packet) {
   return encoder.encode(
