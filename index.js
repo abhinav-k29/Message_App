@@ -6,7 +6,27 @@ const { Server } = require('socket.io');
 const { randomBytes, randomUUID } = require("node:crypto");
 const app = express();
 const server = createServer(app);
-const io = new Server(server);
+const ALLOWED_ORIGINS = new Set([
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://192.168.137.1:3000"
+  ]);
+
+const io = new Server(server, {
+  maxHttpBufferSize: 16 * 1024,
+  allowRequest: (request, callback) => {
+    const origin = request.headers.origin;
+    const allowed = !origin || ALLOWED_ORIGINS.has(origin);
+
+    if (!allowed) {
+      console.log(`SECURITY: rejected origin ${origin}`);
+    }
+    callback(
+      null,
+      allowed
+    );
+  }
+});
 
 const MAX_USERNAME_LENGTH = 30;
 const MAX_ROOM_LENGTH = 64;
